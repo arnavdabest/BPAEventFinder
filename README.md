@@ -8,7 +8,7 @@ A one-file quiz that recommends Business Professionals of America (BPA) competit
 
 - `index.html` is the whole app. Open it in any browser.
 - Events come from the BPA Workplace Skills Assessment Program "Events at a Glance" table (Sept 2026 release). Each event is tagged with format, solo/team, subjects, prep level, experience level, whether you bring your own computer, and whether it has a certification component.
-- Each quiz answer adds or subtracts points on events whose tags match. Top picks are shown with a "why this matched you" line. Postsecondary-only events are hidden.
+- Each quiz answer adds or subtracts points on events whose tags match. Results follow BPA entry rules: 2 main events with at least one solo, then alternates, then optional add-ons (virtual events and Open Concepts tests). Each card has a "why this matched you" line. Postsecondary-only events are hidden.
 - Full question and scoring table: [QUIZ.md](QUIZ.md). Extracted event list with flags for rows to verify: [events.md](events.md).
 
 ## Editing

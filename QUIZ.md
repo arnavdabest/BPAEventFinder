@@ -1,6 +1,6 @@
 # Quiz design (6 questions)
 
-Every event carries tags: **format** (test / production / project / live), **judges** (yes/no), **team** (individual/team), **subjects** (one or more of 9), **prep** (low/medium/high), **level** (beginner/intermediate/advanced). Each answer option carries a points table per tag value (see `QUESTIONS` in template.html). Top 5 by score are shown; at most 2 virtual events; results scoring under 80% of the top pick are dropped once there are 3. Postsecondary-only events are hidden.
+Every event carries tags: **format** (test / production / project / live), **judges** (yes/no), **team** (individual/team), **subjects** (one or more of 9), **prep** (low/medium/high), **level** (beginner/intermediate/advanced). Each answer option carries a points table per tag value (see `QUESTIONS` in template.html). Results follow BPA entry rules: **2 main events, at least one solo**. The top-scoring non-virtual, non-Concepts event is Pick 1; Pick 2 is the next best that keeps at least one solo event. Up to 3 alternates (≥75% of the top score) follow. Virtual events (≥70%) and Open Concepts tests (≥50%) are shown separately as optional add-ons, up to 2 each. Postsecondary-only events are hidden.
 
 | # | Question | Options → points |
 |---|---|---|

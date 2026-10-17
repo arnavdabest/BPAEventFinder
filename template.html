@@ -31,6 +31,12 @@
   .btn.link{display:inline-block;width:auto;padding:8px 16px;margin:14px auto 0;font-size:.85rem;text-align:center;color:var(--navy);text-decoration:none;border:1px solid var(--sky);background:transparent;font-weight:600}
   .btn.link:hover{border-color:var(--navy);background:var(--sky-light)}
   .center{text-align:center}
+  .rules{background:var(--sky-light);border-left:4px solid var(--gold);border-radius:8px;padding:12px 14px;font-size:.9rem;margin-bottom:6px}
+  .rules b{color:var(--heading)}
+  .card.labeled{border-left-color:var(--red)}
+  .label{font-family:"Josefin Sans",sans-serif;font-size:.72rem;font-weight:700;color:var(--red);text-transform:uppercase;letter-spacing:1.5px;margin-bottom:4px}
+  .tag.opt{background:#fff;border:1px dashed var(--gold);color:#7a5f2a}
+  .optnote{font-family:inherit;font-size:.72rem;font-weight:600;color:#7a5f2a;text-transform:none;letter-spacing:0;margin-left:6px}
   .btn.ghost{text-align:center;color:var(--navy);font-weight:600;background:transparent;border-color:var(--navy)}
   .progress{height:6px;background:var(--sky);border-radius:3px;margin:0 0 20px;overflow:hidden}
   .progress div{height:100%;background:var(--navy);transition:width .25s}
@@ -96,6 +102,9 @@ for (const e of EVENTS) {
           : /fundamental|essential|concepts|\(open\)|^interview skills|personal financial|extemporaneous/.test(n) ? "beginner" : "intermediate";
 }
 const VISIBLE = EVENTS.filter(e => e.division !== "PS");
+// BPA rules: you compete in 2 main events, at least one of them solo. Virtual events and
+// Open Concepts tests are optional add-ons on top of those 2.
+for (const e of VISIBLE) e.slot = e.category === "Virtual Events" ? "virtual" : /concepts/i.test(e.name) ? "open" : "core";
 
 // ---------- quiz ----------
 // Each option carries w: {dimension: {eventTagValue: points}} and why: {eventTagValue: "reason shown on the card"}.
@@ -174,15 +183,25 @@ function score(e, a) {
 }
 
 function match(a) {
-  const ranked = VISIBLE.map(e => ({e, ...score(e, a)})).sort((x,y) => y.s - x.s);
-  const out = [], perCat = {};
-  for (const r of ranked) {
-    if (out.length >= 5) break;
-    if (r.e.category === "Virtual Events" && (perCat[r.e.category] || 0) >= 2) continue; // max 2 virtual so in-person events show
-    if (out.length >= 3 && r.s < out[0].s * 0.8) break;    // drop weak tail matches
-    out.push(r); perCat[r.e.category] = (perCat[r.e.category] || 0) + 1;
+  const scored = VISIBLE.map(e => ({e, ...score(e, a)})).sort((x,y) => y.s - x.s);
+  const core = scored.filter(r => r.e.slot === "core");
+  const virtual = scored.filter(r => r.e.slot === "virtual");
+  const open = scored.filter(r => r.e.slot === "open");
+
+  // main picks: best overall, then best that keeps at least one solo event
+  const pick1 = core[0];
+  let pick2 = null, rest = [];
+  for (const r of core.slice(1)) {
+    if (!pick2 && (pick1.e.team === "individual" || r.e.team === "individual") && r.e.name !== pick1.e.name) pick2 = r;
+    else rest.push(r);
   }
-  return out;
+  const mains = [pick1, pick2].filter(Boolean);
+  const topScore = pick1 ? pick1.s : 0;
+  const alternates = rest.filter(r => r.s >= topScore * 0.75).slice(0, 3);
+  // add-ons only if they fit reasonably
+  const addVirtual = virtual.filter(r => r.s >= topScore * 0.7).slice(0, 2);
+  const addOpen = open.filter(r => r.s >= topScore * 0.5).slice(0, 2);
+  return {mains, alternates, addVirtual, addOpen};
 }
 
 // ---------- UI ----------
@@ -193,7 +212,7 @@ const esc = s => String(s).replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":
 function landing() {
   answers = {}; idx = 0;
   app.innerHTML = `<div class="hero"><div class="kicker">Workplace Skills Assessment Program</div><h1>Which BPA event fits you?</h1>
-   <p>Answer 10 quick questions and get your top event picks. Takes about 2 minutes.</p></div>
+   <p>Answer 10 quick questions and get your 2 main event picks, plus optional add-ons. Takes about 2 minutes.</p></div>
    <button class="btn primary" id="start">Start</button>
    <button class="btn ghost" id="all">Just show me all the events</button>
    <div class="center"><a class="btn link" href="https://bpa.org/" target="_blank" rel="noopener">What's BPA?</a></div>`;
@@ -223,14 +242,15 @@ function question() {
 
 function advance() { idx++; idx < QUESTIONS.length ? question() : results(); }
 
-function card(e, why) {
+function card(e, why, label) {
   const d = e.detail || {};
   const team = e.team === "team" ? "Team" + (e.teamSize ? " of " + e.teamSize.split(" ")[0] : "") : "Solo";
   const ex = (d.examples && d.examples.length)
     ? `<ul>${d.examples.map(x => `<li><a href="${esc(x.url)}" target="_blank" rel="noopener">${esc(x.title)}</a>${x.note ? " – " + esc(x.note) : ""}</li>`).join("")}</ul>`
     : `<span class="muted">None added yet. Ask a chapter officer to see past entries.</span>`;
-  return `<div class="card"><h3>${esc(e.name)} <span class="code">#${esc(e.code)}</span></h3>
-    <div class="tags"><span class="tag">${esc(FMT_LABEL[e.format])}</span><span class="tag">${team}</span><span class="tag">${esc(e.category)}</span>${e.cert === "true" ? '<span class="tag gold">Certification</span>' : ""}${e.ownComputer === "true" ? '<span class="tag">Bring laptop</span>' : ""}</div>
+  const slotTag = e.slot === "virtual" ? '<span class="tag opt">Optional · Virtual</span>' : e.slot === "open" ? '<span class="tag opt">Optional · Open test</span>' : "";
+  return `<div class="card${label ? " labeled" : ""}">${label ? `<div class="label">${esc(label)}</div>` : ""}<h3>${esc(e.name)} <span class="code">#${esc(e.code)}</span></h3>
+    <div class="tags"><span class="tag">${esc(FMT_LABEL[e.format])}</span><span class="tag">${team}</span><span class="tag">${esc(e.category)}</span>${slotTag}${e.cert === "true" ? '<span class="tag gold">Certification</span>' : ""}${e.ownComputer === "true" ? '<span class="tag">Bring laptop</span>' : ""}</div>
     <div class="small">${esc(e.description)}</div>
     ${why ? `<div class="why"><b>Why this matched you:</b> ${esc(why)}.</div>` : ""}
     <details><summary>More about this event</summary>
@@ -246,9 +266,14 @@ function card(e, why) {
 }
 
 function results() {
-  const top = match(answers);
-  app.innerHTML = `<h2>Your top picks</h2><p>Tap "More about this event" on any card to see what you'd actually make and what wins.</p>
-    ${top.map(t => card(t.e, t.why.length ? t.why.slice(0,4).join(", ") : "closest overall fit")).join("")}
+  const m = match(answers);
+  const whyOf = t => t.why.length ? t.why.slice(0,4).join(", ") : "closest overall fit";
+  const section = (title, note, list, label) => list.length ? `<div class="cat">${title}</div>${note ? `<p class="small">${note}</p>` : ""}${list.map((t,i) => card(t.e, whyOf(t), label ? label(i) : null)).join("")}` : "";
+  app.innerHTML = `<h2>Your picks</h2>
+    <div class="rules"><b>How BPA entries work:</b> you compete in <b>2 main events</b>, and at least one of them has to be a solo event. Virtual events and Open Concepts tests are optional extras you can add on top.</div>
+    ${section("Your 2 main events", null, m.mains, i => "Pick " + (i+1) + (i === 1 && m.mains[0].e.team === "team" ? " · your required solo event" : ""))}
+    ${section("Other strong fits", "Swap one of these in if a main pick doesn't feel right.", m.alternates)}
+    ${section("Optional add-ons", "Not required. Virtual events are judged online before the conference; Open Concepts tests are quick extra tests with no entry limit.", [...m.addVirtual, ...m.addOpen], () => "Optional")}
     <button class="btn primary" id="all">Show all events</button>
     <button class="btn ghost" id="again">Start over</button>`;
   document.getElementById("all").onclick = () => showAll(results);
@@ -257,10 +282,10 @@ function results() {
 }
 
 function showAll(back) {
-  let html = `<h2>All events</h2><p>${VISIBLE.length} events open to high school students.</p>`;
+  let html = `<h2>All events</h2><p>${VISIBLE.length} events open to high school students. You enter 2 main events (at least one solo); virtual events and Open Concepts tests are optional add-ons.</p>`;
   let cat = null;
   for (const e of VISIBLE) {
-    if (e.category !== cat) { cat = e.category; html += `<div class="cat">${esc(cat)}</div>`; }
+    if (e.category !== cat) { cat = e.category; html += `<div class="cat">${esc(cat)}${cat === "Virtual Events" ? " <span class='optnote'>optional add-on</span>" : ""}</div>`; }
     html += card(e, null);
   }
   html += `<button class="btn ghost" id="back">Back</button>`;
