@@ -28,6 +28,9 @@
   .btn.primary{background:var(--red);color:#fff;border-color:var(--red);text-align:center;font-weight:600;letter-spacing:.3px}
   .btn.primary:hover{background:var(--red-dark)}
   .btn.primary:disabled{opacity:.45;cursor:default}
+  .btn.link{display:inline-block;width:auto;padding:8px 16px;margin:14px auto 0;font-size:.85rem;text-align:center;color:var(--navy);text-decoration:none;border:1px solid var(--sky);background:transparent;font-weight:600}
+  .btn.link:hover{border-color:var(--navy);background:var(--sky-light)}
+  .center{text-align:center}
   .btn.ghost{text-align:center;color:var(--navy);font-weight:600;background:transparent;border-color:var(--navy)}
   .progress{height:6px;background:var(--sky);border-radius:3px;margin:0 0 20px;overflow:hidden}
   .progress div{height:100%;background:var(--navy);transition:width .25s}
@@ -192,7 +195,8 @@ function landing() {
   app.innerHTML = `<div class="hero"><div class="kicker">Workplace Skills Assessment Program</div><h1>Which BPA event fits you?</h1>
    <p>Answer 10 quick questions and get your top event picks. Takes about 2 minutes.</p></div>
    <button class="btn primary" id="start">Start</button>
-   <button class="btn ghost" id="all">Just show me all the events</button>`;
+   <button class="btn ghost" id="all">Just show me all the events</button>
+   <div class="center"><a class="btn link" href="https://bpa.org/" target="_blank" rel="noopener">What's BPA?</a></div>`;
   document.getElementById("start").onclick = () => question();
   document.getElementById("all").onclick = () => showAll(landing);
 }
