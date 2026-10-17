@@ -2,7 +2,7 @@
 
 A one-file quiz that recommends Business Professionals of America (BPA) competitive events. Students answer 10 quick questions and get 3–5 matched events with an explanation of why each fit, plus a browse-all list. No backend, no login, works on a phone.
 
-**Live site:** enable GitHub Pages on this repo (Settings → Pages → Deploy from branch `main`, folder `/ (root)`) and it will be served at `https://<your-username>.github.io/bpa-event-matcher/`.
+**Live site:** enable GitHub Pages on this repo (Settings → Pages → Deploy from branch `main`, folder `/ (root)`) and it will be served at `https://arnavdabest.github.io/BPAEventFinder/`.
 
 ## How it works
 
