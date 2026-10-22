@@ -40,6 +40,9 @@
   .btn.ghost{text-align:center;color:var(--navy);font-weight:600;background:transparent;border-color:var(--navy)}
   .progress{height:6px;background:var(--sky);border-radius:3px;margin:0 0 20px;overflow:hidden}
   .progress div{height:100%;background:var(--navy);transition:width .25s}
+  .qsub{margin:-8px 0 14px;font-size:.92rem;color:var(--muted)}
+  .grp{font-family:"Josefin Sans",sans-serif;font-size:.78rem;color:var(--navy);text-transform:uppercase;letter-spacing:1px;font-weight:600;margin:18px 0 2px}
+  .grp:first-child{margin-top:4px}
   .step{font-family:"Josefin Sans",sans-serif;font-size:.8rem;color:var(--navy);margin-bottom:6px;text-transform:uppercase;letter-spacing:1px;font-weight:600}
   .card{background:var(--card);border:1px solid var(--border);border-left:4px solid var(--navy);border-radius:12px;padding:16px 18px;margin:12px 0}
   .card h3{margin:0 0 8px;font-size:1.1rem;font-weight:700}
@@ -91,10 +94,21 @@ const SUBJ_OVERRIDE = {
   "240":["startup","business"],"245":["business","startup"],"510":["startup","marketing"],"425":["games","design"],"440":["games","design"],
   "455":["design","it"],"365":["it","design"],"360":["it","design"],"150":["finance","business"],"155":["finance"],"160":["finance"],
   "235":["business"],"755":["comm"],"760":["comm"],"725":["comm"],"730":["comm"],"745":["comm","business"],"750":["comm","business"]};
+// Hobbies outside business/creative: each points at the events where that interest fits naturally.
+const HOBBY = {
+  sports:{t:"Sports", why:"you can make it about sports", ev:["505","V13","293","445"]},
+  gaming:{t:"Playing video games & esports", why:"it's a natural fit for gamers", ev:["V13","V03","440"]},
+  music:{t:"Music", why:"it uses the same audio and creative skills as music", ev:["450","420","430","V01"]},
+  content:{t:"YouTube, TikTok & making content", why:"it's basically content creation", ev:["430","450","V12","420","445"]},
+  art:{t:"Art & drawing", why:"it puts your art skills to work", ev:["410","V11","460","V10"]},
+  stage:{t:"Debate, theater & Model UN", why:"it uses the same skills as debate and theater", ev:["735","755","250","760"]},
+  fashion:{t:"Fashion, sneakers & brands", why:"you can build it around fashion or a brand you love", ev:["V10","V12","500","240"]},
+  helping:{t:"Volunteering & helping people", why:"it's about doing right by people", ev:["V14","745","750","615"]}};
 const FMT_LABEL = {test:"Objective test",production:"Hands-on computer test",project:"Pre-submitted project + presentation",live:"Live judged, on-site prep"};
 
 for (const e of EVENTS) {
-  e.subjects = SUBJ_OVERRIDE[e.code] || CAT_SUBJ[e.category] || [];
+  e.subjects = [...(SUBJ_OVERRIDE[e.code] || CAT_SUBJ[e.category] || [])];
+  for (const [k, h] of Object.entries(HOBBY)) if (h.ev.includes(e.code)) e.subjects.push(k);
   e.judges = (e.format === "project" || e.format === "live") ? "yes" : "no";
   e.ownComputer = String(!!e.ownComputer); e.cert = String(!!e.cert);
   const n = e.name.toLowerCase();
@@ -126,7 +140,9 @@ const QUESTIONS = [
    {t:"Team, but only if I already have people", w:{team:{team:2}}, why:{team:"it's a team event"}},
    {t:"Either is fine", w:{}, why:{}}]},
  {id:"subjects", q:"What are you into? Pick up to 3.", multi:true, max:3,
-   opts:Object.entries(SUBJ).map(([v,t])=>({t,v}))},
+   sub:"You don't have to be a business person to do BPA. Plenty of events let you bring in sports, gaming, music, art and more.",
+   opts:[...Object.entries(HOBBY).map(([v,h])=>({t:h.t, v, g:"Hobbies & outside stuff"})),
+         ...Object.entries(SUBJ).map(([v,t])=>({t, v, g:"School & career subjects"}))]},
  {id:"prep", q:"How much time do you want to put in before the conference?", opts:[
    {t:"Whatever it takes. I want to win.", w:{prep:{high:3, medium:1}}, why:{high:"it rewards people who go all in"}},
    {t:"A solid few weekends", w:{prep:{high:2, medium:2}}, why:{high:"it's a project you build over a few weeks", medium:"a few weekends of prep is enough"}},
@@ -170,7 +186,9 @@ function score(e, a) {
     if (q.multi) {
       const hits = e.subjects.filter(x => ans.includes(x));
       s += (q.pts || 3) * hits.length;
-      if (hits.length) why.push((q.prefix || "it's about") + " " + hits.map(h => SUBJ[h].toLowerCase()).join(" and "));
+      const school = hits.filter(h => SUBJ[h]);
+      if (school.length) why.push((q.prefix || "it's about") + " " + school.map(h => SUBJ[h].toLowerCase()).join(" and "));
+      for (const h of hits) if (HOBBY[h] && !why.includes(HOBBY[h].why)) why.push(HOBBY[h].why);
       continue;
     }
     const opt = q.opts[ans];
@@ -225,7 +243,8 @@ function question() {
   app.innerHTML = `<div class="step">Question ${idx+1} of ${QUESTIONS.length}</div>
     <div class="progress"><div style="width:${idx/QUESTIONS.length*100}%"></div></div>
     <h2>${esc(q.q)}</h2>
-    <div id="opts">${q.opts.map((o,i)=>`<button class="btn${q.multi && multiSel.includes(o.v) ? " sel" : ""}" data-i="${i}">${esc(o.t)}</button>`).join("")}</div>
+    ${q.sub ? `<p class="qsub">${esc(q.sub)}</p>` : ""}
+    <div id="opts">${q.opts.map((o,i)=>`${o.g && o.g !== (q.opts[i-1]||{}).g ? `<div class="grp">${esc(o.g)}</div>` : ""}<button class="btn${q.multi && multiSel.includes(o.v) ? " sel" : ""}" data-i="${i}">${esc(o.t)}</button>`).join("")}</div>
     ${q.multi ? `<button class="btn primary" id="next" ${multiSel.length ? "" : "disabled"}>Next</button>` : ""}
     ${idx>0 ? `<button class="btn ghost" id="back">Back</button>` : ""}`;
   document.querySelectorAll("#opts .btn").forEach(b => b.onclick = () => {
