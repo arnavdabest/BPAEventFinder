@@ -1,0 +1,9 @@
+*.py
+pylib/
+__pycache__/
+supabase/
+template.html
+pdf_cols.json
+events.md
+QUIZ.md
+.env*

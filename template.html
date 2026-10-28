@@ -4,6 +4,10 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>BPA Event Matcher</title>
+<meta name="description" content="Answer 10 quick questions and find the BPA competitive events that fit you.">
+<link rel="icon" href="/favicon-192.png" sizes="192x192" type="image/png">
+<link rel="icon" href="/favicon-32.png" sizes="32x32" type="image/png">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Josefin+Sans:wght@400;600;700&display=swap" rel="stylesheet">
 <style>
@@ -64,6 +68,7 @@
   dd ul{margin:4px 0 0;padding-left:18px}
   a{color:var(--navy)}
   .footer{max-width:560px;margin:0 auto;padding:0 16px 32px;font-size:.78rem;color:var(--muted);text-align:center}
+  .footer .legal{margin-top:8px}
   .hero{background:var(--navy-dark);color:#fff;border-radius:14px;padding:28px 22px;margin-bottom:18px;position:relative;overflow:hidden}
   .hero:before{content:"";position:absolute;right:-40px;top:-40px;width:160px;height:160px;border-radius:50%;background:var(--navy);opacity:.6}
   .hero h1{color:#fff;position:relative}
@@ -73,11 +78,11 @@
 </head>
 <body>
 <div class="topbar"><div class="in">
-  <a href="https://bpa.org/" target="_blank" rel="noopener" aria-label="Business Professionals of America"><img src="logo.png" alt="Business Professionals of America" onerror="this.outerHTML='<span class=fallback>BPA</span>'"></a>
+  <a href="#" id="home" title="Back to start" aria-label="Back to start"><img src="logo.png" alt="Business Professionals of America"></a>
   <span class="sub">Event Matcher</span>
 </div></div>
 <div class="wrap" id="app"></div>
-<div class="footer">Chapter-built tool, not an official BPA site. Event data from the BPA Workplace Skills Assessment Program "Events at a Glance" (Sept 2026). Official guidelines at <a href="https://bpa.org/" target="_blank" rel="noopener">bpa.org</a>.</div>
+<div class="footer">Chapter-built tool, not an official BPA site. Event data from the BPA Workplace Skills Assessment Program "Events at a Glance" (Sept 2026). Official guidelines at <a href="https://bpa.org/" target="_blank" rel="noopener">bpa.org</a>.<div class="legal"><a href="/privacy">Privacy</a> · <a href="/terms">Terms</a> · <a href="/support">Support</a></div></div>
 <script>
 const EVENTS = /*EVENTS*/;
 const GUIDELINES_URL = "https://bpa.org/students/wsap/";
@@ -222,24 +227,83 @@ function match(a) {
   return {mains, alternates, addVirtual, addOpen};
 }
 
+// ---------- anonymous analytics ----------
+// Sends what people pick and read to /api/track (Vercel -> Supabase). No names, emails or IPs.
+const T = (() => {
+  const ls = (k, v) => { try { if (v === undefined) return localStorage.getItem(k); localStorage.setItem(k, v); } catch { return null; } };
+  // Off for local files, Global Privacy Control, Do Not Track, or the opt-out on /privacy.
+  const on = location.protocol === "https:" || location.hostname === "localhost"
+    ? !navigator.globalPrivacyControl && navigator.doNotTrack !== "1" && ls("bpa_optout") !== "1" : false;
+  const uuid = () => crypto.randomUUID ? crypto.randomUUID() : "10000000-1000-4000-8000-100000000000".replace(/[018]/g, c => (c ^ crypto.getRandomValues(new Uint8Array(1))[0] & 15 >> c / 4).toString(16));
+  let vid = ls("bpa_vid"); if (on && !vid) { vid = uuid(); ls("bpa_vid", vid); }
+  const visit = +(ls("bpa_visits") || 0) + 1; if (on) ls("bpa_visits", visit);
+  const sid = uuid();
+  let queue = [], timer = null;
+  const flush = () => {
+    clearTimeout(timer); timer = null;
+    if (!on || !queue.length) return;
+    const body = JSON.stringify({sid, vid, events: queue}); queue = [];
+    const blob = new Blob([body], {type: "application/json"});
+    if (!(navigator.sendBeacon && navigator.sendBeacon("/api/track", blob)))
+      fetch("/api/track", {method: "POST", body, headers: {"Content-Type": "application/json"}, keepalive: true}).catch(() => {});
+  };
+  const send = (type, d = {}, q) => { queue.push({type, d, q, t: Date.now()}); if (!timer) timer = setTimeout(flush, 2500); };
+  const p = new URLSearchParams(location.search), w = innerWidth;
+  send("session_start", {visit, referrer: document.referrer || null, path: location.pathname + location.search,
+    utm_source: p.get("utm_source"), utm_medium: p.get("utm_medium"), utm_campaign: p.get("utm_campaign"),
+    tz: Intl.DateTimeFormat().resolvedOptions().timeZone, lang: navigator.language,
+    device: w < 640 ? "phone" : w < 1024 ? "tablet" : "desktop", sw: screen.width, sh: screen.height, vw: innerWidth, vh: innerHeight,
+    dark: matchMedia("(prefers-color-scheme: dark)").matches, touch: navigator.maxTouchPoints > 0});
+  addEventListener("visibilitychange", () => { if (document.visibilityState === "hidden") { T.onHide(); flush(); } });
+  addEventListener("pagehide", flush);
+  return {send, flush, onHide: () => {}};
+})();
+const ev3 = e => ({code: e.code, name: e.name});
+const labelsFor = (q, ans) => q.multi ? ans.map(v => (q.opts.find(o => o.v === v) || {}).t) : [q.opts[ans].t];
+let view = "landing", quizStart = 0, qShownAt = 0, quizDone = false, openDetails = new Map();
+T.onHide = () => {
+  if (quizStart && !quizDone) T.send("page_hidden", {step: idx + 1, question: QUESTIONS[idx] && QUESTIONS[idx].id, ms_in_quiz: Date.now() - quizStart}, QUESTIONS[idx] && QUESTIONS[idx].id);
+  for (const [el, t] of openDetails) T.send("detail_close", {code: el.dataset.code, name: el.dataset.name, ms: Date.now() - t, from: view, reason: "page_hidden"});
+};
+// "More about this event" opens/closes and how long each one stays open.
+document.addEventListener("toggle", e => {
+  const el = e.target; if (!el.matches || !el.matches("details[data-code]")) return;
+  const d = {code: el.dataset.code, name: el.dataset.name, from: view, label: el.dataset.label || null};
+  if (el.open) { openDetails.set(el, Date.now()); T.send("detail_open", d); }
+  else if (openDetails.has(el)) { T.send("detail_close", {...d, ms: Date.now() - openDetails.get(el)}); openDetails.delete(el); }
+}, true);
+document.addEventListener("click", e => {
+  const a = e.target.closest && e.target.closest("a[href^='http']"); if (!a) return;
+  const det = a.closest("details[data-code]");
+  T.send("link_click", {url: a.href, text: a.textContent.trim().slice(0, 80), from: view, ...(det ? {code: det.dataset.code, name: det.dataset.name} : {})});
+  T.flush();
+});
+
 // ---------- UI ----------
 const app = document.getElementById("app");
 let answers = {}, idx = 0, multiSel = [];
 const esc = s => String(s).replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 
 function landing() {
-  answers = {}; idx = 0;
+  answers = {}; idx = 0; view = "landing"; quizStart = 0; quizDone = false; openDetails.clear();
+  T.send("landing_view");
   app.innerHTML = `<div class="hero"><div class="kicker">Workplace Skills Assessment Program</div><h1>Which BPA event fits you?</h1>
    <p>Answer 10 quick questions and get your 2 main event picks, plus optional add-ons. Takes about 2 minutes.</p></div>
    <button class="btn primary" id="start">Start</button>
    <button class="btn ghost" id="all">Just show me all the events</button>
    <div class="center"><a class="btn link" href="https://bpa.org/" target="_blank" rel="noopener">What's BPA?</a></div>`;
-  document.getElementById("start").onclick = () => question();
-  document.getElementById("all").onclick = () => showAll(landing);
+  document.getElementById("start").onclick = () => { quizStart = Date.now(); T.send("quiz_start"); question(); };
+  document.getElementById("all").onclick = () => { T.send("browse_all", {from: "landing"}); showAll(landing); };
 }
 
 function question() {
   const q = QUESTIONS[idx]; multiSel = q.multi ? (answers[q.id] || []).slice() : [];
+  view = "quiz"; qShownAt = Date.now();
+  T.send("question_view", {step: idx + 1, question: q.q, revisit: answers[q.id] != null}, q.id);
+  const record = ans => {
+    T.send("answer", {step: idx + 1, question: q.q, value: ans, labels: labelsFor(q, ans), ms: Date.now() - qShownAt,
+      changed: answers[q.id] != null && JSON.stringify(answers[q.id]) !== JSON.stringify(ans), previous: answers[q.id] ?? null}, q.id);
+  };
   app.innerHTML = `<div class="step">Question ${idx+1} of ${QUESTIONS.length}</div>
     <div class="progress"><div style="width:${idx/QUESTIONS.length*100}%"></div></div>
     <h2>${esc(q.q)}</h2>
@@ -249,14 +313,15 @@ function question() {
     ${idx>0 ? `<button class="btn ghost" id="back">Back</button>` : ""}`;
   document.querySelectorAll("#opts .btn").forEach(b => b.onclick = () => {
     const i = +b.dataset.i;
-    if (!q.multi) { answers[q.id] = i; advance(); return; }
+    if (!q.multi) { record(i); answers[q.id] = i; advance(); return; }
     const v = q.opts[i].v;
-    if (multiSel.includes(v)) { multiSel = multiSel.filter(x=>x!==v); b.classList.remove("sel"); }
-    else if (multiSel.length < q.max) { multiSel.push(v); b.classList.add("sel"); }
+    if (multiSel.includes(v)) { multiSel = multiSel.filter(x=>x!==v); b.classList.remove("sel"); T.send("option_toggle", {value: v, label: q.opts[i].t, on: false, ms: Date.now() - qShownAt}, q.id); }
+    else if (multiSel.length < q.max) { multiSel.push(v); b.classList.add("sel"); T.send("option_toggle", {value: v, label: q.opts[i].t, on: true, order: multiSel.length, ms: Date.now() - qShownAt}, q.id); }
+    else T.send("option_toggle", {value: v, label: q.opts[i].t, on: false, blocked_at_max: true}, q.id);
     document.getElementById("next").disabled = multiSel.length === 0;
   });
-  const n = document.getElementById("next"); if (n) n.onclick = () => { answers[q.id] = multiSel.slice(); advance(); };
-  const bk = document.getElementById("back"); if (bk) bk.onclick = () => { idx--; question(); };
+  const n = document.getElementById("next"); if (n) n.onclick = () => { record(multiSel.slice()); answers[q.id] = multiSel.slice(); advance(); };
+  const bk = document.getElementById("back"); if (bk) bk.onclick = () => { T.send("back", {from_step: idx + 1, ms: Date.now() - qShownAt}, q.id); idx--; question(); };
 }
 
 function advance() { idx++; idx < QUESTIONS.length ? question() : results(); }
@@ -265,14 +330,14 @@ function card(e, why, label) {
   const d = e.detail || {};
   const team = e.team === "team" ? "Team" + (e.teamSize ? " of " + e.teamSize.split(" ")[0] : "") : "Solo";
   const ex = (d.examples && d.examples.length)
-    ? `<ul>${d.examples.map(x => `<li><a href="${esc(x.url)}" target="_blank" rel="noopener">${esc(x.title)}</a>${x.note ? " – " + esc(x.note) : ""}</li>`).join("")}</ul>`
+    ? `<ul>${d.examples.filter(x => /^https?:\/\//i.test(x.url)).map(x => `<li><a href="${esc(x.url)}" target="_blank" rel="noopener">${esc(x.title)}</a>${x.note ? " – " + esc(x.note) : ""}</li>`).join("")}</ul>`
     : `<span class="muted">None added yet. Ask a chapter officer to see past entries.</span>`;
   const slotTag = e.slot === "virtual" ? '<span class="tag opt">Optional · Virtual</span>' : e.slot === "open" ? '<span class="tag opt">Optional · Open test</span>' : "";
   return `<div class="card${label ? " labeled" : ""}">${label ? `<div class="label">${esc(label)}</div>` : ""}<h3>${esc(e.name)} <span class="code">#${esc(e.code)}</span></h3>
     <div class="tags"><span class="tag">${esc(FMT_LABEL[e.format])}</span><span class="tag">${team}</span><span class="tag">${esc(e.category)}</span>${slotTag}${e.cert === "true" ? '<span class="tag gold">Certification</span>' : ""}${e.ownComputer === "true" ? '<span class="tag">Bring laptop</span>' : ""}</div>
     <div class="small">${esc(e.description)}</div>
     ${why ? `<div class="why"><b>Why this matched you:</b> ${esc(why)}.</div>` : ""}
-    <details><summary>More about this event</summary>
+    <details data-code="${esc(e.code)}" data-name="${esc(e.name)}"${label ? ` data-label="${esc(label)}"` : ""}><summary>More about this event</summary>
       <dl>
         <dt>What you actually make or do</dt><dd>${esc(d.make || "")}</dd>
         <dt>What it's scored on</dt><dd>${esc(d.look || "")}</dd>
@@ -286,6 +351,22 @@ function card(e, why, label) {
 
 function results() {
   const m = match(answers);
+  view = "results";
+  if (!quizDone) {
+    quizDone = true;
+    const pack = list => list.map(t => ({...ev3(t.e), score: t.s, why: t.why.slice(0, 4), team: t.e.team, format: t.e.format, category: t.e.category}));
+    const labeled = {}; for (const q of QUESTIONS) if (answers[q.id] != null) labeled[q.id] = q.multi ? labelsFor(q, answers[q.id]) : labelsFor(q, answers[q.id])[0];
+    const all = VISIBLE.map(e => ({e, ...score(e, answers)})).sort((x, y) => y.s - x.s);
+    T.send("quiz_complete", {
+      answers: labeled, raw: answers,
+      interests: labelsFor(QUESTIONS.find(q => q.id === "subjects"), answers.subjects || []),
+      classes: labelsFor(QUESTIONS.find(q => q.id === "classes"), answers.classes || []),
+      mains: pack(m.mains), alternates: pack(m.alternates), addons: pack([...m.addVirtual, ...m.addOpen]),
+      top10: all.slice(0, 10).map(t => ({code: t.e.code, score: t.s})),
+      total_ms: Date.now() - quizStart});
+    T.flush();
+  }
+  T.send("results_view");
   const whyOf = t => t.why.length ? t.why.slice(0,4).join(", ") : "closest overall fit";
   const section = (title, note, list, label) => list.length ? `<div class="cat">${title}</div>${note ? `<p class="small">${note}</p>` : ""}${list.map((t,i) => card(t.e, whyOf(t), label ? label(i) : null)).join("")}` : "";
   app.innerHTML = `<h2>Your picks</h2>
@@ -295,8 +376,8 @@ function results() {
     ${section("Optional add-ons", "Not required. Virtual events are judged online before the conference; Open Concepts tests are quick extra tests with no entry limit.", [...m.addVirtual, ...m.addOpen], () => "Optional")}
     <button class="btn primary" id="all">Show all events</button>
     <button class="btn ghost" id="again">Start over</button>`;
-  document.getElementById("all").onclick = () => showAll(results);
-  document.getElementById("again").onclick = landing;
+  document.getElementById("all").onclick = () => { T.send("browse_all", {from: "results"}); showAll(results); };
+  document.getElementById("again").onclick = () => { T.send("start_over"); landing(); };
   window.scrollTo(0,0);
 }
 
@@ -308,10 +389,15 @@ function showAll(back) {
     html += card(e, null);
   }
   html += `<button class="btn ghost" id="back">Back</button>`;
+  view = "all";
   app.innerHTML = html; window.scrollTo(0,0);
   document.getElementById("back").onclick = () => { back(); window.scrollTo(0,0); };
 }
 
+const logo = document.querySelector("#home img");
+const logoFallback = () => { logo.outerHTML = '<span class="fallback">BPA</span>'; };
+if (logo.complete && !logo.naturalWidth) logoFallback(); else logo.addEventListener("error", logoFallback);
+document.getElementById("home").onclick = e => { e.preventDefault(); T.send("home_click", {from: view, step: view === "quiz" ? idx + 1 : null}); landing(); window.scrollTo(0, 0); };
 landing();
 </script>
 </body>
